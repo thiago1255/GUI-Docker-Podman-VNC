@@ -3,6 +3,7 @@ import json
 import subprocess as terminal
 import time
 import random
+import os
 
 # Standart configurations
 config = {
@@ -15,7 +16,11 @@ config = {
 	'passwd_type': 0,
 	'--root': "",
 	'--runroot': "",
-	#'--runtime': "",
+	'--runtime': "",
+	'xephyr': False,
+	'xephyr_size': "800x600",
+	'screen_main_vnc': "HDMI-0",
+	'screen_main_ret': "DVI-0",
 	'containers': []
 }
 # Container example:
@@ -197,8 +202,8 @@ def start_container(name):
 			command += ['--root', config['--root']]
 		if config['--runroot'] != "":
 			command += ['--runroot', config['--runroot']]
-		#if config['--runtime'] != "":
-		#	command += ['--runtime', config['--runtime']]
+		if config['--runtime'] != "":
+			command += ['--runtime', config['--runtime']]
 		command += ["run", "--rm"]
 	else:
 		warning("Gerenciador não suportado.", "Use apenas 'docker' ou 'podman'.")
@@ -248,7 +253,22 @@ def start_container(name):
 		viewer.append(f"localhost:{config['vnc_port']}")
 		print(viewer)
 		time.sleep(1.8)
-		terminal.run(viewer)
+		if config['xephyr']:
+			xephyr = None
+			if config['xephyr_size'] != "":
+				xephyr = terminal.Popen(["Xephyr", "-fullscreen", ":1", "-screen", str(config['xephyr_size'])])
+			else:
+				xephyr = terminal.Popen(["Xephyr", "-fullscreen", ":1"])
+			if config['screen_main_vnc'] != "":
+				terminal.run(["xrandr", "--output", str(config['screen_main_vnc']), "--primary"])
+			os.environ['DISPLAY'] = ':1'
+			terminal.run(viewer)
+			xephyr.wait()
+			os.environ['DISPLAY'] = ':0'
+			if config['screen_main_ret'] != "":
+				terminal.run(["xrandr", "--output", str(config['screen_main_ret']), "--primary"])
+		else:
+			terminal.Popen(viewer)
 	else:
 		warning("O container está rodando:", container)
 		
@@ -325,7 +345,7 @@ def podman_config():
 	global config
 	old_root = config['--root']
 	old_runroot = config['--runroot']
-	#old_runtime = config['--runtime']
+	old_runtime = config['--runtime']
 
 	layout = [
 		[gui.Text("Pasta --root:", font=(22))],
@@ -334,9 +354,9 @@ def podman_config():
 		[gui.Text("Pasta --runroot:", font=(22))],
 		[gui.Input(default_text=old_runroot)],
 		[gui.Text("Pasta usada pelo podman para dados usados na execução dos containers.")],
-		#[gui.Text("Pasta --runtime:", font=(22))],
-		#[gui.Input(default_text=old_runtime)],
-		#[gui.Text("Pasta usada pelo podman para armazenar dados (incluindo imagens).")],
+		[gui.Text("Pasta --runtime:", font=(22))],
+		[gui.Input(default_text=old_runtime)],
+		[gui.Text("Arquivo usado pelo podman como runtime.")],
 		[gui.Button("Confirmar"), gui.Button("Cancelar")]
 	]
 	
@@ -349,11 +369,11 @@ def podman_config():
 		if event == "Confirmar":
 			config['--root'] = values[0]
 			config['--runroot'] = values[1]
-			#config['--runtime'] = values[2]
+			config['--runtime'] = values[2]
 			if not save():
 				config['--root'] = old_root
 				config['--runroot'] = old_runroot
-				#config['--runtime'] = values[2]
+				config['--runtime'] = values[2]
 			break
 	window.close()
 
@@ -473,12 +493,25 @@ def port_config():
 
 ###################### The configuration window for vnc viewer ##################################################
 def vnc_config():
+	global config
 	old = config['vncviewer']
+	oldX = config['xephyr']
+	oldSize = config['xephyr_size']
+	oldMainVnc = config['screen_main_vnc']
+	oldMainRet = config['screen_main_ret']
 	layout = [
 		[gui.Text("Visualizador VNC:", font=(22))],
-		[gui.Input(default_text=old)],
+		[gui.Input(default_text=old, key="V")],
 		[gui.Button("Confirmar"), gui.Button("Cancelar")],
-		[gui.Text("Esse será o comando que abrirá o visualizador VNC.")]
+		[gui.Text("Esse será o comando que abrirá o visualizador VNC.")],
+		[gui.Text("Display no host:", font=(22))],
+		[gui.Checkbox('Criar servidor Xephyr em ":1" ?', key="X", default=config['xephyr'])],
+		[gui.Text("Isso abrirá uma tela Xephyr onde o visualizador vnc mandará os dados.")],
+		[gui.Text("Tamanho do Xephyr:"), gui.Input(default_text=oldSize, key="S")],
+		[gui.Text("Tornar tela principal:"), gui.Input(default_text=oldMainVnc, key="m")],
+		[gui.Text("Em caso de dois monitores fisicos, este será tornado o principal ao abrir o VNC.")],
+		[gui.Text("Retornar tela principal:"), gui.Input(default_text=oldMainRet, key="M")],
+		[gui.Text("Em caso de dois monitores fisicos, este retornara a ser o principal ao fechar o VNC.")]
 	]
 	window = gui.Window('Configurações', layout, resizable=True)
 	while True:
@@ -487,9 +520,17 @@ def vnc_config():
 			warning("Operação Cancelada.", "Nenhuma alteração foi feita.")
 			break
 		if event == "Confirmar":
-			config['vncviewer'] = values[0]
+			config['vncviewer'] = values['V']
+			config['xephyr'] = values['X']
+			config['xephyr_size'] = values['S']
+			config['screen_main_vnc'] = values['m']
+			config['screen_main_ret'] = values['M']
 			if not save():
 				config['vncviewer'] = old
+				config['xephyr'] = oldX
+				config['xephyr_size'] = oldSize
+				config['screen_main_vnc'] = oldMainVnc
+				config['screen_main_ret'] = oldMainRet
 			break
 	window.close()
 
