@@ -255,12 +255,14 @@ def start_container(name):
 		time.sleep(1.8)
 		if config['xephyr']:
 			xephyr = None
-			if config['xephyr_size'] != "":
-				xephyr = terminal.Popen(["Xephyr", "-fullscreen", ":1", "-screen", str(config['xephyr_size'])])
-			else:
-				xephyr = terminal.Popen(["Xephyr", "-fullscreen", ":1"])
-			if config['screen_main_vnc'] != "":
+			if config['screen_main_vnc'] != "" and config['screen_main_ret'] != "":
 				terminal.run(["xrandr", "--output", str(config['screen_main_vnc']), "--primary"])
+				xephyr = terminal.Popen(["Xephyr", ":1", "-output", str(config['screen_main_ret'])])
+			else:
+				if config['xephyr_size'] != "":
+					xephyr = terminal.Popen(["Xephyr", ":1", "-screen", str(config['xephyr_size'])])
+				else:
+					xephyr = terminal.Popen(["Xephyr", ":1", "-fullscreen"])
 			os.environ['DISPLAY'] = ':1'
 			terminal.run(viewer)
 			xephyr.wait()
