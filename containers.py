@@ -21,6 +21,9 @@ config = {
 	'xephyr_size': "800x600",
 	'screen_main_vnc': "HDMI-0",
 	'screen_main_ret': "DVI-0",
+	'mouse': False,
+	'cordX': 1000,
+	'cordY': 500,
 	'containers': []
 }
 # Container example:
@@ -252,11 +255,12 @@ def start_container(name):
 			]
 		viewer.append(f"localhost:{config['vnc_port']}")
 		print(viewer)
-		time.sleep(1.8)
+		time.sleep(2.5)
 		if config['xephyr']:
 			xephyr = None
 			if config['screen_main_vnc'] != "" and config['screen_main_ret'] != "":
 				terminal.run(["xrandr", "--output", str(config['screen_main_vnc']), "--primary"])
+				time.sleep(0.5)
 				xephyr = terminal.Popen(["Xephyr", ":1", "-output", str(config['screen_main_ret'])])
 			else:
 				if config['xephyr_size'] != "":
@@ -264,9 +268,15 @@ def start_container(name):
 				else:
 					xephyr = terminal.Popen(["Xephyr", ":1", "-fullscreen"])
 			os.environ['DISPLAY'] = ':1'
-			terminal.run(viewer)
-			xephyr.wait()
+			terminal.Popen(viewer)
 			os.environ['DISPLAY'] = ':0'
+			if config['mouse']:
+				while xephyr.poll() is None:
+					time.sleep(0.2)
+					if "(ctrl+shift releases mouse and keyboard)" in terminal.run(["xdotool", "getwindowfocus", "getwindowname"], capture_output=True, text=True).stdout:
+						terminal.run(["xdotool", "mousemove", str(config['cordX']), str(config['cordY'])])
+			else:
+				xephyr.wait()
 			if config['screen_main_ret'] != "":
 				terminal.run(["xrandr", "--output", str(config['screen_main_ret']), "--primary"])
 		else:
@@ -501,19 +511,25 @@ def vnc_config():
 	oldSize = config['xephyr_size']
 	oldMainVnc = config['screen_main_vnc']
 	oldMainRet = config['screen_main_ret']
+	oldMouse = config['mouse']
+	oldCordX = config['cordX']
+	oldCordY = config['cordY']
 	layout = [
 		[gui.Text("Visualizador VNC:", font=(22))],
 		[gui.Input(default_text=old, key="V")],
 		[gui.Button("Confirmar"), gui.Button("Cancelar")],
 		[gui.Text("Esse será o comando que abrirá o visualizador VNC.")],
 		[gui.Text("Display no host:", font=(22))],
-		[gui.Checkbox('Criar servidor Xephyr em ":1" ?', key="X", default=config['xephyr'])],
+		[gui.Checkbox('Criar servidor Xephyr em ":1" ?', key="X", default=oldX)],
 		[gui.Text("Isso abrirá uma tela Xephyr onde o visualizador vnc mandará os dados.")],
 		[gui.Text("Tamanho do Xephyr:"), gui.Input(default_text=oldSize, key="S")],
 		[gui.Text("Tornar tela principal:"), gui.Input(default_text=oldMainVnc, key="m")],
 		[gui.Text("Em caso de dois monitores fisicos, este será tornado o principal ao abrir o VNC.")],
 		[gui.Text("Retornar tela principal:"), gui.Input(default_text=oldMainRet, key="M")],
-		[gui.Text("Em caso de dois monitores fisicos, este retornara a ser o principal ao fechar o VNC.")]
+		[gui.Text("Em caso de dois monitores fisicos, este retornara a ser o principal ao fechar o VNC.")],
+		[gui.Checkbox('Centralizar mouse ?', key="Mouse", default=oldMouse)],
+		[gui.Text("Cordenada X:"), gui.Input(default_text=oldCordX, key="CX"), gui.Text("Cordenada Y:"), gui.Input(default_text=oldCordY, key="CY")],
+		[gui.Text("Isso mantera o mouse em uma cordenada XY se o Xephyr capturar o mouse (util para 360°)")]
 	]
 	window = gui.Window('Configurações', layout, resizable=True)
 	while True:
@@ -527,12 +543,18 @@ def vnc_config():
 			config['xephyr_size'] = values['S']
 			config['screen_main_vnc'] = values['m']
 			config['screen_main_ret'] = values['M']
+			config['mouse'] = values['Mouse']
+			config['cordX'] = int(values['CX'])
+			config['cordY'] = int(values['CY'])
 			if not save():
 				config['vncviewer'] = old
 				config['xephyr'] = oldX
 				config['xephyr_size'] = oldSize
 				config['screen_main_vnc'] = oldMainVnc
 				config['screen_main_ret'] = oldMainRet
+				config['mouse'] = oldMouse 
+				config['cordX'] = oldCordX 
+				config['cordY'] = oldCordY 
 			break
 	window.close()
 
