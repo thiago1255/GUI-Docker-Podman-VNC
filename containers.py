@@ -105,20 +105,6 @@ def main():
 
 ###################### Add or change the start script of a container ############################################
 def change_container(name):
-	layout = [
-		[gui.Text("Nome:"), gui.Input(default_text="O nome da imagem a ser executada.", key="NAME")],
-		[gui.Checkbox('Usar Vnc ?', key="VNC")],
-		[gui.Text("Porta VNC:"), gui.Input(default_text="A porta que o servidor VNC está usando dentro do container.", key="PORT")],
-		[gui.Text("Senha VNC:"), gui.Input(default_text="A senha que deve ser usada para acessar o vnc.", key="PASS")],
-		[gui.Checkbox('Usar Terminal ?', key="T")],
-		[gui.Checkbox('Usar gpu(s) ?', key="G")],
-		[gui.Checkbox('Montar pasta ?', key="M")],
-		[gui.Text("Caminho no Host:"), gui.Input(default_text="Caminho absoluto da pasta a ser montada.", key="SRC")],
-		[gui.Text("Caminho no Container:"), gui.Input(default_text="Caminho absoluto do destino da pasta.", key="DST")],
-		[gui.Checkbox('Argumentos extras ?', key="A")],
-		[gui.Text("Argumentos:"), gui.Input(default_text="Argumentos extras para rodar a imagem.", key="ARG")],
-		[gui.Button("Criar"), gui.Button("Cancelar")]
-	]
 	container = None
 	if name is not None:
 		for item in config['containers']:
@@ -139,6 +125,40 @@ def change_container(name):
 			[gui.Text("Argumentos:"), gui.Input(default_text=container['args'], key="ARG")],
 			[gui.Button("Mudar"), gui.Button("Cancelar")],
 			[gui.Button("Exclúir container.")]
+		]
+	else:
+		element = gui.Input(default_text="Nenhuma imagem foi encontrada na busca automatica, insira nomes manualmente.", key="NAME")
+		if config['runtime'] == "podman":
+			podman = ["podman"]
+			if config['--root'] != "":
+				podman += ["--root", config['--root']]
+			try:
+				images = terminal.check_output(podman+["images", "-f", "dangling=false", "--format=json"], text=True)
+				with open('temp.json', 'w') as temp:
+					for line in images:
+						temp.write(line)
+				with open('temp.json', 'r') as temp:
+					images = []
+					for image in json.load(temp):
+						images += image['Names']
+				for i in range(len(images)):
+					images[i] = images[i].split('/')[-1]
+				element = gui.OptionMenu(images, default_value=images[0], key="NAME")
+			except Exception as e:
+				print("Erro ao buscar por imagens:", e)
+		layout = [
+			[gui.Text("Nome:"), element],
+			[gui.Checkbox('Usar Vnc ?', key="VNC")],
+			[gui.Text("Porta VNC:"), gui.Input(default_text="A porta que o servidor VNC está usando dentro do container.", key="PORT")],
+			[gui.Text("Senha VNC:"), gui.Input(default_text="A senha que deve ser usada para acessar o vnc.", key="PASS")],
+			[gui.Checkbox('Usar Terminal ?', key="T")],
+			[gui.Checkbox('Usar gpu(s) ?', key="G")],
+			[gui.Checkbox('Montar pasta ?', key="M")],
+			[gui.Text("Caminho no Host:"), gui.Input(default_text="Caminho absoluto da pasta a ser montada.", key="SRC")],
+			[gui.Text("Caminho no Container:"), gui.Input(default_text="Caminho absoluto do destino da pasta.", key="DST")],
+			[gui.Checkbox('Argumentos extras ?', key="A")],
+			[gui.Text("Argumentos:"), gui.Input(default_text="Argumentos extras para rodar a imagem.", key="ARG")],
+			[gui.Button("Criar"), gui.Button("Cancelar")]
 		]
 	window = gui.Window('Gerenciador de containers', layout, resizable=True)
 	while True:
@@ -231,8 +251,7 @@ def start_container(name):
 			password = ''.join(random.choice('abcçdefghijklmnopqrstuvwxyzABCÇDEFGHIJKLMNOPQRSTUVWXYZ1234567890') for _ in range(config['random']))
 		if config['passwd_type'] == 0 or config['passwd_type'] == 2:
 			command += ["-e", f'SENHA={password}']
-
-	container = "(Vnc desabilitado)"			
+		
 	if dictionary['terminal']:
 		command += ["-it", name]
 		command = ["gnome-terminal", "--"] + command
@@ -256,32 +275,31 @@ def start_container(name):
 		viewer.append(f"localhost:{config['vnc_port']}")
 		print(viewer)
 		time.sleep(2.5)
-		if config['xephyr']:
-			xephyr = None
-			if config['screen_main_vnc'] != "" and config['screen_main_ret'] != "":
-				terminal.run(["xrandr", "--output", str(config['screen_main_vnc']), "--primary"])
-				time.sleep(0.5)
-				xephyr = terminal.Popen(["Xephyr", ":1", "-output", str(config['screen_main_ret'])])
-			else:
-				if config['xephyr_size'] != "":
-					xephyr = terminal.Popen(["Xephyr", ":1", "-screen", str(config['xephyr_size'])])
-				else:
-					xephyr = terminal.Popen(["Xephyr", ":1", "-fullscreen"])
-			os.environ['DISPLAY'] = ':1'
+		if not config['xephyr']:
 			terminal.Popen(viewer)
-			os.environ['DISPLAY'] = ':0'
-			if config['mouse']:
-				while xephyr.poll() is None:
-					time.sleep(0.2)
-					if "(ctrl+shift releases mouse and keyboard)" in terminal.run(["xdotool", "getwindowfocus", "getwindowname"], capture_output=True, text=True).stdout:
-						terminal.run(["xdotool", "mousemove", str(config['cordX']), str(config['cordY'])])
-			else:
-				xephyr.wait()
-			if config['screen_main_ret'] != "":
-				terminal.run(["xrandr", "--output", str(config['screen_main_ret']), "--primary"])
+			return
+		xephyr = None
+		if config['screen_main_vnc'] != "" and config['screen_main_ret'] != "":
+			terminal.run(["xrandr", "--output", str(config['screen_main_vnc']), "--primary"])
+			time.sleep(0.5)
+			xephyr = terminal.Popen(["Xephyr", ":1", "-output", str(config['screen_main_ret'])])
 		else:
-			terminal.Popen(viewer)
-	else:
+			if config['xephyr_size'] != "":
+				xephyr = terminal.Popen(["Xephyr", ":1", "-screen", str(config['xephyr_size'])])
+			else:
+				xephyr = terminal.Popen(["Xephyr", ":1", "-fullscreen"])
+		os.environ['DISPLAY'] = ':1'
+		terminal.Popen(viewer)
+		os.environ['DISPLAY'] = ':0'
+		if config['mouse']:
+			while xephyr.poll() is None:
+				time.sleep(0.07)
+				if "(ctrl+shift releases mouse and keyboard)" in terminal.run(["xdotool", "getwindowfocus", "getwindowname"], capture_output=True, text=True).stdout:
+					terminal.run(["xdotool", "mousemove", str(config['cordX']), str(config['cordY'])])
+		if config['screen_main_ret'] != "":
+			xephyr.wait()
+			terminal.run(["xrandr", "--output", str(config['screen_main_ret']), "--primary"])
+	elif not dictionary['terminal']:
 		warning("O container está rodando:", container)
 		
 ###################### Create a passwd file of Tiger VNC ########################################################
@@ -400,7 +418,7 @@ def configurations():
 		[gui.Button("Senhas para VNC.")],
 		[gui.Button("Mudar tema do app.")],
 		[gui.Button("Excluir imagens <none>.")],
-		[gui.Button("Resetar configurações.")],
+		[gui.Button("Resetar configurações.")]
 	]
 	if config['runtime'] == "podman":
 		layout.append([gui.Button("Argumentos padrão podman.")])
@@ -554,7 +572,7 @@ def vnc_config():
 				config['screen_main_ret'] = oldMainRet
 				config['mouse'] = oldMouse 
 				config['cordX'] = oldCordX 
-				config['cordY'] = oldCordY 
+				config['cordY'] = oldCordY
 			break
 	window.close()
 
